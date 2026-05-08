@@ -15,7 +15,8 @@
  *  - agent → subagent (frontmatter `agents:` field)
  *  - agent handoff → agent (frontmatter `handoffs[].agent`)
  * agent → skill (from `tools/registry/agent-registry.json` skills array)
- * agent ⇢ skill (from `tools/registry/agent-registry.json` capability_skills array, kind="capability")
+ * agent ⇢ skill edges were dropped in Phase 2 of context-window-optimization;
+ * skill nodes remain as standalone nodes but are no longer linked to agents.
  *  - prompt → agent (slug match, e.g. `02-requirements` → `02-Requirements`)
  *  - instruction → agent/skill/prompt (via `applyTo` glob + name match)
  *  - workflow → validator (parse YAML for `npm run …`, expanding composite scripts)
@@ -374,54 +375,13 @@ function buildEdges(nodes) {
     }
   }
 
-  // Agent -> Skill (from agent-registry.json)
-  let registry = { agents: {}, subagents: {} };
-  try {
-    registry = readJson(join(REPO_ROOT, "tools/registry/agent-registry.json"));
-  } catch {
-    // optional
-  }
-  const registryAgents = registry.agents || {};
-  const registrySubagents = registry.subagents || {};
-  const allRegistryEntries = { ...registryAgents, ...registrySubagents };
-  for (const [roleSlug, entry] of Object.entries(allRegistryEntries)) {
-    // Handle nested entries (iac-code.bicep, deploy.terraform)
-    const subEntries = entry.skills
-      ? [entry]
-      : Object.values(entry).filter(
-          (v) => v && typeof v === "object" && v.skills,
-        );
-    for (const sub of subEntries) {
-      const agentPath = sub.agent;
-      if (!agentPath) continue;
-      const agentName = basename(agentPath, ".agent.md");
-      const agentNode =
-        findNode(agentName, "agent") || findNode(agentName, "subagent");
-      if (!agentNode) continue;
-      for (const skillName of sub.skills || []) {
-        const skillNode = findNode(skillName, "skill");
-        if (skillNode) {
-          edges.push({
-            id: `${agentNode.id}--uses->${skillNode.id}`,
-            source: agentNode.id,
-            target: skillNode.id,
-            kind: "uses",
-          });
-        }
-      }
-      for (const skillName of sub.capability_skills || []) {
-        const skillNode = findNode(skillName, "skill");
-        if (skillNode) {
-          edges.push({
-            id: `${agentNode.id}--capability->${skillNode.id}`,
-            source: agentNode.id,
-            target: skillNode.id,
-            kind: "capability",
-          });
-        }
-      }
-    }
-  }
+  // NOTE: Agent → Skill edges were dropped in Phase 2 of the
+  // context-window-optimization plan. Skill wiring is no longer carried
+  // by tools/registry/agent-registry.json; it is discovered at runtime via
+  // the `Read .github/skills/{name}/SKILL[.digest|.minimal].md` pattern in
+  // agent bodies. Skill nodes still exist as standalone nodes but no edges
+  // connect them to agents. Re-introduce later by parsing agent bodies for
+  // the regex used in tools/scripts/validate-orphaned-content.mjs.
 
   // Prompt -> Agent (by slug match, e.g. 02-requirements prompt -> 02-Requirements agent)
   for (const n of nodes) {

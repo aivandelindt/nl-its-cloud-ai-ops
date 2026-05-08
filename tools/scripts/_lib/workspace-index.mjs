@@ -14,16 +14,12 @@
 import fs from "node:fs";
 import path from "node:path";
 import { parseFrontmatter } from "./parse-frontmatter.mjs";
-import {
-  AGENTS_DIR,
-  SUBAGENTS_DIR,
-  SKILLS_DIR,
-  INSTRUCTIONS_DIR,
-} from "./paths.mjs";
+import { AGENTS_DIR, SUBAGENTS_DIR, SKILLS_DIR, INSTRUCTIONS_DIR, PROMPT_SOURCE_DIRS } from "./paths.mjs";
 
 let _agents = null;
 let _skills = null;
 let _instructions = null;
+let _prompts = null;
 
 /**
  * Returns a Map of all agent files: filename → { path, dir, content, frontmatter, isSubagent }
@@ -72,9 +68,7 @@ export function getSkills() {
       content = fs.readFileSync(skillFile, "utf-8");
       frontmatter = parseFrontmatter(content);
     }
-    const refFiles = hasRefs
-      ? fs.readdirSync(refsDir).filter((f) => f.endsWith(".md"))
-      : [];
+    const refFiles = hasRefs ? fs.readdirSync(refsDir).filter((f) => f.endsWith(".md")) : [];
     _skills.set(entry.name, {
       dir: skillDir,
       content,
@@ -118,4 +112,31 @@ export function resetIndex() {
   _agents = null;
   _skills = null;
   _instructions = null;
+  _prompts = null;
+}
+
+/**
+ * Returns a Map of all prompt files: filename → { path, content, frontmatter, body }.
+ * Prompt frontmatter uses string `model:` (not array, per agent-authoring convention).
+ * `body` is the markdown after the closing `---`.
+ *
+ * Scans every directory listed in `PROMPT_SOURCE_DIRS` (production prompts in
+ * `.github/prompts/` plus E2E test prompts in `tools/tests/prompts/`).
+ */
+export function getPromptFiles() {
+  if (_prompts) return _prompts;
+  _prompts = new Map();
+  for (const dir of PROMPT_SOURCE_DIRS) {
+    if (!fs.existsSync(dir)) continue;
+    for (const file of fs.readdirSync(dir)) {
+      if (!file.endsWith(".prompt.md")) continue;
+      const filePath = path.join(dir, file);
+      const content = fs.readFileSync(filePath, "utf-8");
+      const frontmatter = parseFrontmatter(content);
+      const fmEnd = content.indexOf("\n---", content.indexOf("---") + 3);
+      const body = fmEnd !== -1 ? content.substring(fmEnd + 4) : content;
+      _prompts.set(file, { path: filePath, content, frontmatter, body });
+    }
+  }
+  return _prompts;
 }

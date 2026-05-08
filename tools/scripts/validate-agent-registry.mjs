@@ -5,7 +5,11 @@
  * Validates tools/registry/agent-registry.json:
  * - All referenced .agent.md files exist
  * - All referenced skills exist in .github/skills/
- * - Cross-checks model names against known valid models
+ * - Cross-checks registry model strings against the agent YAML frontmatter
+ *
+ * Model allow-listing is intentionally NOT performed here. The agent frontmatter
+ * is the canonical source of truth; this validator only confirms registry mirrors it.
+ * For the frontmatter ≡ registry equality check, see validate-model-consistency.mjs.
  *
  * @example
  * node tools/scripts/validate-agent-registry.mjs
@@ -16,15 +20,6 @@ import { getSkillNames, getAgents } from "./_lib/workspace-index.mjs";
 import { Reporter } from "./_lib/reporter.mjs";
 import { REGISTRY_PATH } from "./_lib/paths.mjs";
 
-const KNOWN_MODELS = [
-  "Claude Opus 4.6",
-  "Claude Sonnet 4.6",
-  "Claude Haiku 4.5",
-  "GPT-5.3-Codex",
-  "GPT-5.4",
-  "GPT-4o",
-];
-
 const r = new Reporter("Agent Registry Validator");
 
 function validateAgentEntry(key, entry, skillNames) {
@@ -33,13 +28,7 @@ function validateAgentEntry(key, entry, skillNames) {
     for (const variant of ["bicep", "terraform"]) {
       if (entry[variant]) {
         validateAgentFile(key, entry[variant].agent);
-        validateSkills(
-          `${key} (${variant})`,
-          entry[variant].skills,
-          entry[variant].capability_skills,
-          skillNames,
-        );
-        validateModel(key, entry[variant].model);
+        validateSkills(`${key} (${variant})`, entry[variant].skills, entry[variant].capability_skills, skillNames);
       }
     }
     return;
@@ -47,7 +36,6 @@ function validateAgentEntry(key, entry, skillNames) {
 
   validateAgentFile(key, entry.agent);
   validateSkills(key, entry.skills, entry.capability_skills, skillNames);
-  validateModel(key, entry.model);
 }
 
 function validateAgentFile(key, agentPath) {
@@ -74,28 +62,15 @@ function validateSkills(key, skills, capabilitySkills, skillNames) {
     }
     for (const skill of capabilitySkills) {
       if (!skillNames.has(skill)) {
-        r.error(
-          `Agent "${key}"`,
-          `references non-existent capability skill: "${skill}"`,
-        );
+        r.error(`Agent "${key}"`, `references non-existent capability skill: "${skill}"`);
       }
     }
     const skillSet = new Set(skills);
     for (const cap of capabilitySkills) {
       if (skillSet.has(cap)) {
-        r.error(
-          `Agent "${key}"`,
-          `skill "${cap}" appears in both skills[] and capability_skills[]`,
-        );
+        r.error(`Agent "${key}"`, `skill "${cap}" appears in both skills[] and capability_skills[]`);
       }
     }
-  }
-}
-
-function validateModel(key, model) {
-  if (!model) return;
-  if (!KNOWN_MODELS.includes(model)) {
-    r.warn(`Agent "${key}"`, `unknown model "${model}"`);
   }
 }
 
@@ -152,10 +127,7 @@ for (const [file, agent] of getAgents()) {
 function crossCheckModel(registryKey, registryModel, agentFilePath) {
   if (!registryModel || !agentFilePath) return;
   for (const [file, fm] of agentMap) {
-    if (
-      agentFilePath.endsWith(file) ||
-      file.endsWith(agentFilePath.replace(/^\.github\/agents\//, ""))
-    ) {
+    if (agentFilePath.endsWith(file) || file.endsWith(agentFilePath.replace(/^\.github\/agents\//, ""))) {
       const yamlModel = Array.isArray(fm.model) ? fm.model[0] : fm.model;
       if (yamlModel) {
         const cleanYaml = yamlModel.replace(/ \(copilot\)$/, "");
@@ -172,20 +144,11 @@ function crossCheckModel(registryKey, registryModel, agentFilePath) {
   }
 }
 
-const allEntries = [
-  ...Object.entries(registry.agents || {}),
-  ...Object.entries(registry.subagents || {}),
-];
+const allEntries = [...Object.entries(registry.agents || {}), ...Object.entries(registry.subagents || {})];
 for (const [key, entry] of allEntries) {
   if (entry.bicep || entry.terraform) {
-    if (entry.bicep)
-      crossCheckModel(key + " (bicep)", entry.bicep.model, entry.bicep.agent);
-    if (entry.terraform)
-      crossCheckModel(
-        key + " (terraform)",
-        entry.terraform.model,
-        entry.terraform.agent,
-      );
+    if (entry.bicep) crossCheckModel(`${key} (bicep)`, entry.bicep.model, entry.bicep.agent);
+    if (entry.terraform) crossCheckModel(`${key} (terraform)`, entry.terraform.model, entry.terraform.agent);
   } else {
     crossCheckModel(key, entry.model, entry.agent);
   }

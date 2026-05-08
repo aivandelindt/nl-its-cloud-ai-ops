@@ -14,6 +14,67 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- chore(catalog): drop the `(High reasoning)` suffix from the Opus 4.7 label.
+  `Claude Opus 4.7 (High reasoning)` and `Claude Opus 4.7` were two distinct
+  catalog entries pointing at the same SKU. Reasoning-effort policy is now a
+  per-agent decision documented in
+  `.github/instructions/agent-authoring.instructions.md` (see the
+  "Reasoning-effort policy" subsection), not encoded in the model label.
+  Updates: 4 agent frontmatters (Requirements, Architect, IaC Planner,
+  Context Optimizer), 4 prompt frontmatters, 5 registry rows, model catalog
+  (entries merged + assignments regenerated), vendor-prompting rules and
+  fixtures, classify-model test, and supporting docs. Historical changelog
+  entries left intact (audit-trail integrity).
+
+- feat(agents): migrate the three remaining GPT-5.4 main agents
+  (`07b-bicep-deploy`, `07t-terraform-deploy`, `08-as-built`) to `GPT-5.5`
+  with outcome-first body rewrites. `08-as-built` gains a `## Subagent
+Budget` H2. `GPT-5.4` flipped to `deprecated: true` with zero remaining
+  active assignments — the GPT-5.4 cohort is fully retired. `GPT-5.5`
+  `use_for` adds `deployment-execution` and `as-built-documentation`.
+  `as-built-from-azure.prompt.md` ↔ 08-As-Built cross-family gap closed;
+  orphan `review-imported-iac.prompt.md` migrated to GPT-5.5.
+  `lint-model-alignment.mjs` gains a `gpt-5.5` classifier branch
+  (pre-existing blind spot). `.github/skills/vendor-prompting/rules.json`
+  cleaned of retired GPT-5.4 family entry and overrides.
+  `e2e-orchestrator` migrated to `GPT-5.5` and rewritten in the
+  outcome-first style. Catalog gains a `Claude Opus 4.7` entry (no suffix)
+  used by `09-Diagnose`.
+- feat(agents): migrate the Orchestrator (was Claude Opus 4.7 (High reasoning))
+  and the Sonnet 4.6 cohort (Orchestrator Fast Path, Design, Governance,
+  Bicep CodeGen, Terraform CodeGen, Challenger, challenger-review-subagent)
+  to `GPT-5.5`. Full GPT-5.5 prompt rewrites per agent following the OpenAI
+  prompting guide skeleton (Role / Personality / Goal / Success / Constraints
+  / Output / Stop); existing required sections (output_contract, security
+  baseline, workflow contracts) preserved verbatim. Four prompt files swap
+  accordingly. Eight registry rows updated. Orchestrator self-reference
+  body table corrected. The six Opus 4.7 agents (Requirements, Architect,
+  IaC Planner, Diagnose, Context Optimizer, E2E Orchestrator) and the
+  GPT-5.4 / GPT-5.3-Codex agents and subagents are unchanged.
+- chore(catalog): redesign `.github/model-catalog.json` as `models`
+  (hand-maintained label allow-list) plus auto-generated `assignments`
+  block (mirrored from frontmatter). Replaces the retired `floors` block
+  with a `governance` block documenting the source-of-truth chain. Adds
+  `GPT-5.5` and marks `Claude Sonnet 4.6` `deprecated: true`. New
+  `validate-model-catalog.mjs` validator + `generate-model-catalog.mjs`
+  generator + lefthook pre-commit auto-regeneration.
+- feat(agents): migrate Opus-tier agents from `Claude Opus 4.6` to
+  `Claude Opus 4.7 (High reasoning)` (7 agents + 4 prompt files + 7 registry rows).
+  Catalog entry for 4.6 retained with `deprecated: true` for audit history.
+  Sonnet 4.6 / Haiku 4.5 unchanged.
+- feat(tools): retire `validate-model-floors.mjs` and the `KNOWN_MODELS` allow-list;
+  replace with `validate-model-consistency.mjs` (frontmatter ≡ registry equality).
+  Catalog is now documentation only.
+- feat(agents): retire `<!-- Recommended reasoning_effort: ... -->` HTML annotation
+  workspace-wide (15 agent files + instruction file + 2 validators). Validator
+  Check 3 removed; checks 4 → 3 and 5 → 4 renumbered.
+- chore(audit): Phase 5 audit of the 7 Opus agents against Anthropic 4.7 behavioral
+  changes. Strengthened Orchestrator gate-1 challenger language and Resuming-a-Project
+  empty-result branch.
+- docs: update `agent-authoring.instructions.md` model source-of-truth section,
+  refresh `repo-architecture.md` and `token-estimation.md` Opus rows, and update
+  `[claude-guide]:` reference link target to `platform.claude.com`.
+
 - refactor(hooks): consolidate agent hooks and lefthook validators — merge
   `governance-audit/` and `session-logger/` into single `session-telemetry/`
   directory. Add `tool-audit/` hook (PostToolUse metadata logging), gitleaks

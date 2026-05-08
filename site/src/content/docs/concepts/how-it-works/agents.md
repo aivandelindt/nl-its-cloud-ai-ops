@@ -12,7 +12,7 @@ Every agent definition follows a standard structure:
 ---
 name: 06b-Bicep CodeGen
 description: Expert Azure Bicep IaC specialist...
-model: ["Claude Sonnet 4.6"] # (1)!
+model: ["GPT-5.5"] # (1)!
 tools: [list of allowed tools] # (2)!
 handoffs:
   - label: "Step 6: Deploy"
@@ -89,14 +89,14 @@ complex projects, use the main 01-Orchestrator.
 Subagents are not user-invocable. They are delegated to by parent agents for isolated,
 specific tasks:
 
-| Subagent                      | Purpose                             | Invoked By          |
-| ----------------------------- | ----------------------------------- | ------------------- |
-| challenger-review-subagent    | Adversarial review of artifacts     | Steps 1, 2, 4, 5, 6 |
-| cost-estimate-subagent        | Azure Pricing MCP queries           | Steps 2, 7          |
-| bicep-validate-subagent       | Lint + AVM/security code review     | Step 5 (Bicep)      |
-| bicep-whatif-subagent         | `az deployment what-if` preview     | Step 6 (Bicep)      |
-| terraform-validate-subagent   | Lint + AVM-TF/security code review  | Step 5 (Terraform)  |
-| terraform-plan-subagent       | `terraform plan` preview            | Step 6 (Terraform)  |
+| Subagent                    | Purpose                            | Invoked By          |
+| --------------------------- | ---------------------------------- | ------------------- |
+| challenger-review-subagent  | Adversarial review of artifacts    | Steps 1, 2, 4, 5, 6 |
+| cost-estimate-subagent      | Azure Pricing MCP queries          | Steps 2, 7          |
+| bicep-validate-subagent     | Lint + AVM/security code review    | Step 5 (Bicep)      |
+| bicep-whatif-subagent       | `az deployment what-if` preview    | Step 6 (Bicep)      |
+| terraform-validate-subagent | Lint + AVM-TF/security code review | Step 5 (Terraform)  |
+| terraform-plan-subagent     | `terraform plan` preview           | Step 6 (Terraform)  |
 
 ## The Challenger Pattern
 
@@ -194,9 +194,11 @@ This section walks through creating a new agent from scratch.
 Model selection depends on the task. Use `tools/registry/agent-registry.json` as the
 source of truth, but the current repo pattern is:
 
-- **Planning agents** (accuracy-first) — typically `Claude Opus 4.6`
-- **Orchestrator** — `Claude Opus 4.6` for deep reasoning across the full workflow
-- **Code generation agents** — `Claude Sonnet 4.6` for balanced code quality and speed
+- **Planning agents** (accuracy-first) — typically `Claude Opus 4.7` at high reasoning effort
+- **Orchestrator + Fast Path** — `GPT-5.5` with the OpenAI outcome-first prompting style
+  (Role / Personality / Goal / Success / Constraints / Output / Stop)
+- **Design + Governance + Code generation + Challenger** — `GPT-5.5` for balanced
+  execution quality with explicit retrieval budgets and stopping conditions
 - **Execution, deploy, and validation subagents** — model varies; consult `tools/registry/agent-registry.json`
 - **Adversarial review** — use a different model family than the artifact author when possible
 
@@ -211,7 +213,7 @@ description: >-
   One-line description of what this agent does.
   USE FOR: keyword triggers. DO NOT USE FOR: anti-triggers.
 model:
-  - GPT-5.4
+  - GPT-5.5
 tools:
   - read_file
   - create_file

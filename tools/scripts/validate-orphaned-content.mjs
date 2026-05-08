@@ -75,6 +75,31 @@ function gatherReferenceContent() {
 
 const { corpus, perSkill } = gatherReferenceContent();
 
+// Skill reference regex (Phase 2 of context-window optimization).
+//
+// Skill wiring is now discovered via this regex sweep over agent bodies
+// and other reference content rather than via tools/registry/agent-registry.json.
+// The pattern explicitly allows SKILL.md, SKILL.digest.md, and SKILL.minimal.md
+// so that context-shredding tier references count as wiring.
+//
+// Supported phrasings:
+//   - .github/skills/{name}/SKILL.md
+//   - .github/skills/{name}/SKILL.digest.md
+//   - .github/skills/{name}/SKILL.minimal.md
+// (skills/{name}/SKILL[.tier].md without the leading .github/ also matches.)
+const SKILL_REFERENCE_PATTERN =
+  /(?:\.github\/)?skills\/([a-z0-9]+(?:-[a-z0-9]+)*)\/SKILL(?:\.digest|\.minimal)?\.md/g;
+
+function findSkillReferences(searchContent) {
+  const found = new Set();
+  let m;
+  SKILL_REFERENCE_PATTERN.lastIndex = 0;
+  while ((m = SKILL_REFERENCE_PATTERN.exec(searchContent)) !== null) {
+    found.add(m[1]);
+  }
+  return found;
+}
+
 // Check skills — exclude the skill's own SKILL.md to prevent self-referencing
 console.log("📁 Skills:");
 const skills = getSkills();
@@ -88,11 +113,15 @@ for (const [skill] of skills) {
     .join("\n");
   const searchContent = corpus + "\n" + otherSkills;
 
+  // Primary check: explicit `Read .github/skills/{name}/SKILL[.digest|.minimal].md`
+  // pattern. Falls back to less precise containment checks for non-canonical
+  // mentions (e.g., references/ subpaths, inline backticks) so renamed skills
+  // are still picked up.
+  const wiredSkills = findSkillReferences(searchContent);
   const isReferenced =
-    searchContent.includes(`${skill}/SKILL.md`) ||
-    searchContent.includes(`skills/${skill}`) ||
-    searchContent.includes(`${skill}/references/`) ||
-    searchContent.includes(`${skill}/`) ||
+    wiredSkills.has(skill) ||
+    searchContent.includes(`skills/${skill}/references/`) ||
+    searchContent.includes(`skills/${skill}/templates/`) ||
     searchContent.includes(`\`${skill}\``);
 
   if (!isReferenced) {

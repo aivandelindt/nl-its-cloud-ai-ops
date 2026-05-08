@@ -1,6 +1,6 @@
 ---
 name: 02-Requirements
-model: ["Claude Opus 4.6"]
+model: ["Claude Opus 4.7"]
 description: Researches and captures Azure platform engineering project requirements
 argument-hint: Describe the Azure workload or project you want to gather requirements for
 target: vscode
@@ -16,11 +16,9 @@ tools:
     edit,
     search,
     web,
-    "azure-mcp/*",
     "microsoft-learn/*",
     todo,
     vscode.mermaid-chat-features/renderMermaidDiagram,
-    ms-azuretools.vscode-azure-github-copilot/azure_recommend_custom_modes,
   ]
 handoffs:
   - label: "▶ Refine Requirements"
@@ -29,11 +27,11 @@ handoffs:
     send: false
   - label: "▶ Ask Clarifying Questions"
     agent: 02-Requirements
-    prompt: "Generate clarifying questions to fill gaps in the current requirements. Focus on NFRs, compliance, budget, and regional preferences."
+    prompt: "Generate clarifying questions to fill gaps in the current requirements. Focus on NFRs, compliance, budget, and regional preferences. Input: user prompt + answers gathered so far. Output: updated questioning state (no artifact yet — feeds Phase 4 generation)."
     send: false
   - label: "▶ Validate Completeness"
     agent: 02-Requirements
-    prompt: "Validate the requirements document for completeness against the template. Check all required sections are filled and flag any gaps."
+    prompt: "Validate the requirements document for completeness against the template. Check all required sections are filled and flag any gaps. Input: draft agent-output/{project}/01-requirements.md. Output: completeness report (chat) + revised 01-requirements.md if gaps found."
     send: false
   - label: "🔍 Run Challenger Review"
     agent: 10-Challenger
@@ -45,7 +43,7 @@ handoffs:
     send: true
   - label: "Open in Editor"
     agent: agent
-    prompt: "#createFile the requirements plan as is into an untitled file (`untitled:plan-${camelCaseName}.prompt.md` without frontmatter) for further refinement."
+    prompt: "#createFile the requirements plan as is into an untitled file (`untitled:plan-${camelCaseName}.prompt.md` without frontmatter) for further refinement. Input: agent-output/{project}/01-requirements.md path. Output: VS Code editor opened on the file (no artifact change)."
     send: true
     showContinueOn: false
   - label: "↩ Return to Orchestrator"
@@ -55,7 +53,6 @@ handoffs:
 ---
 
 <!-- ONE-SHOT GATE — the model must complete ALL phases in a single turn -->
-<!-- Recommended reasoning_effort: high -->
 
 <output_contract>
 Primary artifact: agent-output/{project}/01-requirements.md — H2 structure must match
@@ -296,7 +293,12 @@ This phase is required before presenting Gate 1. Do NOT skip it, even for simple
    - `review_focus` = `comprehensive`
    - `pass_number` = `1`
    - `prior_findings` = `null`
-2. Write returned JSON to `agent-output/{project}/challenge-findings-requirements.json`
+   - `output_path` = `agent-output/{project}/challenge-findings-requirements.json`
+   - `overwrite` = `false` (set to `true` only when re-running after revisions)
+2. The subagent writes the JSON file at `output_path` and returns a compact
+   summary (≤15 lines). **Do NOT paste subagent JSON inline.** Read the file
+   from disk only if you need full finding details to synthesize Gate 1.
+   **Checkpoint** (MANDATORY): `apex-recall checkpoint <project> 1 phase_6_challenger --json`
 3. **Present findings directly in chat** — render a markdown table so the user
    sees every finding without opening the JSON file:
    - Print the overall assessment from `summary.overall_assessment`
