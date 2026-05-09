@@ -145,19 +145,60 @@ If `azure_bulk_estimate` returns no pricing data for a SKU, try the SKU with
 entry describing what was tried. Don't substitute approximations or fabricate
 prices — surface unknowns explicitly in `unresolved_items`.
 
+## Sanity checks (v5.3)
+
+After every `azure_bulk_estimate` call, inspect the structured response for
+the following anomalies and **retry per-line with `azure_price_search`**
+when triggered:
+
+1. **Variant-name mismatch**. The MCP returns the **resolved** `sku_name`
+   in each `line_items[*].sku_name`. If the resolved SKU differs from what
+   you sent (e.g. you sent `"Standard"` and got back `"Standard B1"`), the
+   server may have selected a more expensive variant. Re-query with a more
+   specific SKU string.
+
+2. **Unit-of-measure unexpected for service type**. Compute services
+   (App Service, VMs, AKS) should resolve to `meter_dimension: "hour"` or
+   `"day"`. Storage / DNS / endpoints often resolve to `"gb_month"`,
+   `"static_fallback"`, or come back with `monthly_cost: 0` and a
+   `projection_warning` field. **A `projection_warning` is informational, not
+   an error** — but if the warning indicates the meter cannot be projected
+   (per-GB/month, per-transaction, per-second), record the line as
+   `Estimate unavailable` and supply a usage estimate via
+   `azure_cost_estimate` with the relevant volume.
+
+3. **Cost variance vs documented baseline**. If a `monthly_cost` differs by
+
+   > 30% from the prior architecture-assessment estimate (when supplied) or
+   > from the published Microsoft pricing-page baseline, flag the line for
+   > re-query. The MCP exposes `available_meters[]` in the structured response
+   > so you can inspect alternative meters before retrying.
+
+4. **`projection_warning: "static fallback"`**. Treat as a known-good price
+   from the v5.3 static-fallback table (Private DNS Zone, Private Endpoint).
+   No retry needed; the warning text documents the source.
+
+When a retry is required, call `azure_price_search` with `validate_sku: false`
+to surface every meter, then pick the one whose `unitOfMeasure` matches the
+expected billing dimension. **Document the retry in the line-item `notes`**
+so the parent agent (and the audit trail) sees why the value differs from
+the bulk-estimate output.
+
 | Tool                     | When to use                                                            | Max calls |
 | ------------------------ | ---------------------------------------------------------------------- | --------- |
 | `azure_bulk_estimate`    | Default — all resources in ONE call with `resources` array             | **1**     |
 | `azure_region_recommend` | Cheapest region for compute SKUs only (group by VM family if possible) | 1–2       |
 | `azure_price_search`     | Fallback for non-compute services or RI/SP pricing                     | 1–3       |
 | `azure_price_compare`    | Compare pricing across regions or SKUs (only when parent requests it)  | 0–1       |
-| `azure_discover_skus`    | Only if a SKU name is unknown — not for SKUs already in requirements   | 0–1       |
+| `azure_sku_discovery`    | Only if a SKU name is unknown — not for SKUs already in requirements   | 0–1       |
 | `azure_cost_estimate`    | Fallback only — single resource if `azure_bulk_estimate` fails         | 0         |
 
 ### Bulk estimate first
 
 `azure_bulk_estimate` accepts a `resources` array with per-resource `quantity`
-and returns aggregated totals. Use `output_format: "compact"` to reduce response size.
+and returns aggregated totals. Use `response_format: "compact"` (the default in v5.0)
+to keep responses token-efficient. Pass `response_format: "full"` only when you
+need the verbose v4 string shape.
 
 ```text
 // Example: 11 resources in ONE call instead of 11 separate calls
@@ -194,7 +235,7 @@ no pricing, use `azure_price_search` as fallback and calculate costs manually.
 ### When not to use individual calls
 
 - Don't call `azure_cost_estimate` per resource — use `azure_bulk_estimate`.
-- Don't call `azure_discover_skus` for SKUs already specified in requirements.
+- Don't call `azure_sku_discovery` for SKUs already specified in requirements.
 - Don't call `azure_price_search` for base prices — `azure_bulk_estimate` returns them.
 
 Use exact `service_name` values from the azure-defaults skill, or use
@@ -233,9 +274,7 @@ Write the full breakdown to `output_path` atomically. The JSON shape:
       "notes": "{details}"
     }
   ],
-  "optimization_notes": [
-    "{region comparison results, RI savings, tier downgrade options}"
-  ],
+  "optimization_notes": ["{region comparison results, RI savings, tier downgrade options}"],
   "savings_status": "QUANTIFIED | NOT_QUANTIFIED | NOT_APPLICABLE",
   "savings_reason": "{why savings were/were not quantified}",
   "eligible_strategies": ["{list of applicable strategies with prerequisites}"],
@@ -248,7 +287,7 @@ Write the full breakdown to `output_path` atomically. The JSON shape:
 }
 ```
 
-Use `output_format: "compact"` when calling `azure_bulk_estimate` and aggregate
+Use `response_format: "compact"` (the default in v5.0) when calling `azure_bulk_estimate` and aggregate
 the per-resource numbers into the JSON above.
 
 ### Parent-facing summary
@@ -292,7 +331,7 @@ Call 1: azure_bulk_estimate     → all resources in one array
 Call 2: azure_region_recommend  → primary compute SKU (e.g., D4s_v5)
 Call 3: azure_region_recommend  → secondary compute SKU (e.g., D2s_v5)  [optional]
 Call 4: azure_price_search      → RI/SP pricing for reservation savings [optional]
-Call 5: azure_discover_skus     → only if SKU name is ambiguous         [optional]
+Call 5: azure_sku_discovery     → only if SKU name is ambiguous         [optional]
 ```
 
 ## Pricing assumptions
@@ -308,12 +347,12 @@ Override defaults with values from `01-requirements.md` if available.
 
 ## Error handling
 
-| Error                | Action                                                                                                                                                                                |
-| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| SKU not found        | Try one alternative SKU name once. If still not found, mark `Estimate unavailable`, `confidence: Low`, and add a `notes` entry. Don't approximate.                                    |
-| Region not available | Use nearest available region, flag the substitution in `notes`, set `confidence: Medium`.                                                                                             |
+| Error                | Action                                                                                                                                                                                    |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| SKU not found        | Try one alternative SKU name once. If still not found, mark `Estimate unavailable`, `confidence: Low`, and add a `notes` entry. Don't approximate.                                        |
+| Region not available | Use nearest available region, flag the substitution in `notes`, set `confidence: Medium`.                                                                                                 |
 | API timeout          | Retry once on transient timeout. If the second attempt fails, mark `Estimate unavailable`, `confidence: Low`, and add a `notes` entry describing the timeout. Don't substitute estimates. |
-| No pricing data      | Mark `Estimate unavailable`, `confidence: Low`, and include the Azure Pricing Calculator URL in `notes` as a manual-lookup pointer. Don't fabricate.                                  |
+| No pricing data      | Mark `Estimate unavailable`, `confidence: Low`, and include the Azure Pricing Calculator URL in `notes` as a manual-lookup pointer. Don't fabricate.                                      |
 
 ## Pricing provenance
 

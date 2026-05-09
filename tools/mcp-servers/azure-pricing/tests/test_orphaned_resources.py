@@ -72,12 +72,14 @@ def service(mock_credential_manager):
 
 
 class TestToolDefinition:
+    @pytest.mark.admin_required
     def test_find_orphaned_resources_tool_exists(self):
         """The find_orphaned_resources tool must be registered."""
         tools = get_tool_definitions()
         names = [t.name for t in tools]
         assert "find_orphaned_resources" in names
 
+    @pytest.mark.admin_required
     def test_find_orphaned_resources_schema(self):
         """Schema must declare days (int) and all_subscriptions (bool)."""
         tools = get_tool_definitions()
@@ -529,7 +531,7 @@ class TestScannerResourceTypes:
             "currency": "USD",
             "note": "Scanned 1 subscription(s).",
         }
-        output = format_orphaned_resources_response(result)
+        output = format_orphaned_resources_response(result, "full")
 
         assert "Orphaned SQL Elastic Pool (1)" in output
         assert "Orphaned Application Gateway (1)" in output
@@ -649,7 +651,7 @@ class TestFormatter:
             "lookback_days": 60,
             "currency": "USD",
         }
-        output = format_orphaned_resources_response(result)
+        output = format_orphaned_resources_response(result, "full")
         assert "No Orphaned Resources Found" in output
 
     def test_groups_by_type_in_output(self):
@@ -690,7 +692,7 @@ class TestFormatter:
             "currency": "USD",
             "note": "Scanned 1 subscription(s).",
         }
-        output = format_orphaned_resources_response(result)
+        output = format_orphaned_resources_response(result, "full")
 
         # Must contain per-type section headers
         assert "Unattached Disk (2)" in output
@@ -710,7 +712,7 @@ class TestFormatter:
             "message": "Azure auth required.",
             "help": "Run: az login",
         }
-        output = format_orphaned_resources_response(result)
+        output = format_orphaned_resources_response(result, "full")
         assert "Authentication Required" in output
 
     def test_cost_none_shows_na(self):
@@ -737,7 +739,7 @@ class TestFormatter:
             "currency": "USD",
             "note": "",
         }
-        output = format_orphaned_resources_response(result)
+        output = format_orphaned_resources_response(result, "full")
         assert "N/A" in output
 
 
@@ -756,6 +758,7 @@ class TestHandler:
         assert hasattr(handlers, "handle_find_orphaned_resources")
 
     @pytest.mark.asyncio
+    @pytest.mark.admin_required
     async def test_handler_returns_text_content(self):
         """Handler must return a list of TextContent."""
         pricing = MagicMock()
@@ -771,12 +774,17 @@ class TestHandler:
             }
         )
         handlers = ToolHandlers(pricing, sku, orphaned_service=mock_orphaned)
-        result = await handlers.handle_find_orphaned_resources({"days": 30, "all_subscriptions": False})
+        # Pass response_format='full' to assert against the v4 verbose string
+        # shape; default flipped to 'compact' in v5.0.
+        result = await handlers.handle_find_orphaned_resources(
+            {"days": 30, "all_subscriptions": False, "response_format": "full"}
+        )
         assert len(result) == 1
         assert result[0].type == "text"
         assert "No Orphaned Resources Found" in result[0].text
 
     @pytest.mark.asyncio
+    @pytest.mark.admin_required
     async def test_handler_lazy_creates_service(self):
         """If no orphaned_service provided, handler should create one lazily."""
         pricing = MagicMock()
