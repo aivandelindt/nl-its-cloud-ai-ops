@@ -1,6 +1,6 @@
 ---
 name: 04g-Governance
-description: Azure governance discovery agent. Queries Azure Policy assignments via REST API (including management group-inherited policies), classifies policy effects, produces governance constraint artifacts, and runs adversarial review. Step 3.5 of the workflow — runs after Architecture approval, before IaC Planning.
+description: "Azure governance discovery agent. Queries Azure Policy assignments via REST API (incl. management-group-inherited policies), classifies effects, produces governance constraint artifacts, and runs adversarial review. Step 3.5: after Architecture, before IaC Planning."
 model: ["GPT-5.5"]
 argument-hint: Discover governance constraints for a project
 user-invocable: true
@@ -18,9 +18,6 @@ tools:
     "azure-mcp/*",
     "microsoft-learn/*",
     todo,
-    ms-azuretools.vscode-azure-github-copilot/azure_query_azure_resource_graph,
-    ms-azuretools.vscode-azure-github-copilot/azure_get_auth_context,
-    ms-azuretools.vscode-azure-github-copilot/azure_set_auth_context,
     ms-azuretools.vscode-azureresourcegroups/azureActivityLog,
   ]
 handoffs:

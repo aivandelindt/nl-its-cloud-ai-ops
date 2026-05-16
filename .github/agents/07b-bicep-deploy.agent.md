@@ -1,10 +1,10 @@
 ---
 name: 07b-Bicep Deploy
 model: ["GPT-5.5"]
-description: Executes Azure deployments using generated Bicep templates. Uses azd provision (default). deploy.ps1 is deprecated and retained only as a fallback for legacy projects without azure.yaml. Performs what-if analysis and manages deployment lifecycle. Step 6 of the agentic workflow.
+description: "Executes Azure deployments using generated Bicep templates. Uses azd provision (default; deploy.ps1 retained only for legacy projects without azure.yaml). Performs what-if analysis and manages deployment lifecycle. Step 6 of the agentic workflow."
 argument-hint: Deploy the Bicep templates for a specific project
 user-invocable: true
-agents: ["bicep-whatif-subagent", "policy-precheck-subagent", "challenger-review-subagent"]
+agents: ["bicep-whatif-subagent", "bicep-validate-subagent", "policy-precheck-subagent", "challenger-review-subagent"]
 tools:
   [
     vscode,
@@ -20,9 +20,6 @@ tools:
     "microsoft-learn/*",
     todo,
     vscode.mermaid-chat-features/renderMermaidDiagram,
-    ms-azuretools.vscode-azure-github-copilot/azure_query_azure_resource_graph,
-    ms-azuretools.vscode-azure-github-copilot/azure_get_auth_context,
-    ms-azuretools.vscode-azure-github-copilot/azure_set_auth_context,
     ms-azuretools.vscode-azureresourcegroups/azureActivityLog,
   ]
 handoffs:
@@ -137,6 +134,10 @@ This agent runs on `GPT-5.5`. The `bicep-whatif-subagent` it delegates to runs o
 are required here.
 
 ## Read Skills First
+
+Batch independent skill reads into one parallel `read_file` call. **Never re-read** a file
+already in your conversation history (see
+[Context Hygiene](../instructions/agent-authoring.instructions.md#context-hygiene-token-efficiency)).
 
 1. Read `.github/skills/azure-defaults/SKILL.md` — regions, tags, security baseline
 2. Read `.github/skills/azure-artifacts/SKILL.md` — H2 template for `06-deployment-summary.md`

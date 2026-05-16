@@ -1,3 +1,5 @@
+<!-- ref:azuread-pattern-v1 -->
+
 # `azuread_*` Pattern (Wave 2)
 
 Records the **only** APEX-sanctioned shape for Microsoft Entra (Azure

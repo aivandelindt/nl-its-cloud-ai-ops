@@ -1,7 +1,7 @@
 ---
 name: E2E Orchestrator
 model: ["GPT-5.5"]
-description: "Autonomous E2E evaluation orchestrator for the RALPH-style workflow loop. Executes the real workflow agents end to end, with live MCP-backed cost, Draw.io design, governance discovery, validation, and benchmark collection. Does NOT replace the production 01-Orchestrator."
+description: "Autonomous E2E evaluation orchestrator for the RALPH-style workflow loop. Executes real workflow agents end-to-end with live MCP-backed cost, Draw.io design, governance discovery, validation, and benchmark collection. Does NOT replace 01-Orchestrator."
 user-invocable: true
 agents:
   [
@@ -32,9 +32,6 @@ tools:
     search,
     web,
     todo,
-    ms-azuretools.vscode-azure-github-copilot/azure_query_azure_resource_graph,
-    ms-azuretools.vscode-azure-github-copilot/azure_get_auth_context,
-    ms-azuretools.vscode-azure-github-copilot/azure_set_auth_context,
     ms-azuretools.vscode-azureresourcegroups/azureActivityLog,
   ]
 ---

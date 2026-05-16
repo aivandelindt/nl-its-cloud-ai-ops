@@ -1,6 +1,6 @@
 ---
 name: policy-precheck-subagent
-description: "Live Azure Policy precheck subagent (L3). Cross-checks live policy state vs governance constraints, runs what-if/plan policy validation, and returns a deterministic deploy_gate (PROCEED|BLOCK) plus a status classification (CLEAN|INFORMATIONAL|BLOCKED|FAILED) so Deploy agents (07b/07t) can route via the governance drift matrix before az deployment ... create or terraform apply."
+description: "Live Azure Policy precheck subagent (L3). Cross-checks live policy state vs governance constraints, runs what-if/plan validation, returns deterministic deploy_gate (PROCEED|BLOCK) + status (CLEAN|INFORMATIONAL|BLOCKED|FAILED) for Deploy agents (07b/07t)."
 model: ["Claude Sonnet 4.6"]
 user-invocable: false
 disable-model-invocation: false
@@ -24,9 +24,6 @@ tools:
     "terraform/*",
     "microsoft-learn/*",
     todo,
-    ms-azuretools.vscode-azure-github-copilot/azure_query_azure_resource_graph,
-    ms-azuretools.vscode-azure-github-copilot/azure_get_auth_context,
-    ms-azuretools.vscode-azure-github-copilot/azure_set_auth_context,
     ms-azuretools.vscode-azureresourcegroups/azureActivityLog,
   ]
 ---
@@ -42,6 +39,16 @@ a structured CLEAN|DRIFT|BLOCKED|FAILED verdict so Deploy agents (07b/07t)
 can route via `iac-common/references/governance-drift-routing.md` before
 `az deployment ... create` or `terraform apply`.
 </role>
+
+<input_contract>
+The parent agent passes **artifact paths plus the explicit input fields
+documented in `## Inputs` — never the artifact bodies inline**. Re-read
+predecessor files (`04-governance-constraints.json`, rendered ARM, plan
+output) from disk on demand with bounded `read_file` ranges, and consult
+`apex-recall show <project> --json` for decision/finding lookups. If a
+required input field is missing, fail fast with the standard error shape
+rather than asking the parent to paste content.
+</input_contract>
 
 <context_awareness>
 Skill loading tiers (apply per the `context-management` skill, Mode A):

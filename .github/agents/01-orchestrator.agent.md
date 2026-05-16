@@ -1,6 +1,6 @@
 ---
 name: 01-Orchestrator
-description: Master orchestrator for the multi-step Azure platform engineering workflow. Coordinates specialized agents (Requirements, Architect, Design, IaC Plan, IaC Code, Deploy) through the complete development cycle with mandatory human approval gates. Routes to Bicep or Terraform agents based on the iac_tool field in 01-requirements.md. Maintains context efficiency by delegating to subagents and preserves human-in-the-loop control at critical decision points.
+description: Master orchestrator for the multi-step Azure platform engineering workflow. Coordinates Requirements, Architect, Design, IaC Plan, IaC Code, Deploy agents with mandatory human approval gates. Routes Bicep or Terraform tracks via decisions.iac_tool.
 model: ["GPT-5.3-Codex"]
 argument-hint: Describe the Azure platform engineering project you want to build end-to-end
 user-invocable: true
@@ -252,7 +252,10 @@ after Step 1 completes.
 
 ## Read Skills (After Project Name, Before Delegating)
 
-**After confirming the project name**, read:
+**After confirming the project name**, read the four skill files below
+**in a single parallel `read_file` batch** (one tool call, four files).
+**Never re-read** a file that is already in your conversation history
+(see [Context Hygiene](../instructions/agent-authoring.instructions.md#context-hygiene-token-efficiency)).
 
 1. **Read** `.github/skills/golden-principles/SKILL.md` — foundational quality principles for all agents
 2. **Read** `.github/skills/azure-defaults/SKILL.md` — regions, tags
@@ -528,8 +531,8 @@ Orchestrator with the project name — no special resume prompt needed.
 
 | Tier     | Model             | Used For                                                                                        |
 | -------- | ----------------- | ----------------------------------------------------------------------------------------------- |
-| `high`   | Claude Opus 4.7   | Requirements, Architecture, Planning, Context Optimizer                                         |
-| `medium` | GPT-5.5           | Governance, Deploy, As-Built, Diagnose, Challenger, E2E orchestrator                            |
+| `high`   | Claude Opus 4.7   | Architecture, Planning, Context Optimizer                                                       |
+| `medium` | GPT-5.5           | Requirements, Governance, Deploy, As-Built, Diagnose, Challenger, E2E orchestrator             |
 | `medium` | Claude Sonnet 4.6 | Design, Bicep/Terraform CodeGen, Bicep/Terraform validate + preview subagents (Anthropic style) |
 | `codex`  | GPT-5.3-Codex     | **Orchestrator** (handoff-only routing), Cost estimate subagent                                 |
 

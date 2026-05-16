@@ -1,6 +1,6 @@
 ---
 name: challenger-review-subagent
-description: "Unified adversarial review subagent that challenges Azure infrastructure artifacts. Finds untested assumptions, governance gaps, WAF blind spots, and architectural weaknesses. Returns structured JSON findings to the parent agent. Supports single-pass and multi-pass rotating-lens reviews. Handles batch execution (multiple lenses per invocation) for complex projects."
+description: "Unified adversarial review subagent that challenges Azure infrastructure artifacts. Finds untested assumptions, governance gaps, WAF blind spots, and architectural weaknesses. Returns structured JSON findings. Supports single-pass and multi-pass rotating-lens reviews; batches lenses per invocation."
 model: ["GPT-5.5"]
 disable-model-invocation: false
 # Model rationale: GPT-5.5 for structured adversarial review with explicit
@@ -22,9 +22,6 @@ tools:
     "azure-mcp/*",
     "microsoft-learn/*",
     todo,
-    ms-azuretools.vscode-azure-github-copilot/azure_query_azure_resource_graph,
-    ms-azuretools.vscode-azure-github-copilot/azure_get_auth_context,
-    ms-azuretools.vscode-azure-github-copilot/azure_set_auth_context,
     ms-azuretools.vscode-azureresourcegroups/azureActivityLog,
   ]
 ---
@@ -116,6 +113,17 @@ down in this agent.
 > Only read `adversarial-checklists.md` for H2 structural validation.
 > Apply context shredding (from `adversarial-review-protocol.md`) when loading
 > predecessor artifacts — use summarized tier if context is heavy.
+
+## Input Contract
+
+The parent agent passes **artifact paths plus the explicit input fields
+documented in `## Inputs` — never artifact bodies inline**. Re-read the
+challenged artifact, `prior_findings` JSON, governance constraints, and
+any supporting files from disk on demand with bounded `read_file` ranges,
+and consult `apex-recall show <project> --json` for decision/finding
+lookups. If a required input field is missing or `output_path` is not
+supplied, fail fast with an explicit error — do not ask the parent to
+paste content.
 
 ## Inputs
 
