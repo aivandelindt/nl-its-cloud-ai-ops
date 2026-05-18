@@ -43,23 +43,35 @@ handoffs:
     send: true
   - label: "Step 3: Design Artifacts"
     agent: 04-Design
-    prompt: "Generate architecture diagrams and ADRs based on the architecture assessment in `agent-output/{project}/02-architecture-assessment.md`. Diagrams must be Draw.io outputs (`03-des-diagram.drawio`) with quality score >= 9/10. This step is optional - you can skip to Step 3.5."
+    prompt: "Generate architecture diagrams and ADRs based on the architecture assessment in `agent-output/{project}/02-architecture-assessment.md`. The 04-Design agent will ask which tool (Draw.io or Python) and which scope (diagrams, ADRs, or both). This step is optional — you can skip directly to Step 3.5."
     send: false
   - label: "Step 3.5: Governance Discovery"
     agent: 04g-Governance
     prompt: "Discover Azure Policy constraints for `agent-output/{project}/`. Query REST API (including management-group inherited policies), produce 04-governance-constraints.md/.json, and run adversarial review. Input: `02-architecture-assessment.md` resource list. Output: governance constraint artifacts for IaC planning. The governance agent is designed to run as a peer with shared session state \u2014 entering it via this handoff button preserves the discovery cache at `tmp/{project}-governance-live.json` and avoids cold-restarting skill/instruction loading."
     send: true
-  - label: "Step 4: Implementation Plan"
+  - label: "Step 4: IaC Plan (Bicep)"
     agent: 05-IaC Planner
-    prompt: "Create a detailed implementation plan based on the architecture in `agent-output/{project}/02-architecture-assessment.md`. Prerequisites: `04-governance-constraints.md/.json` from Step 3.5. Output: `04-implementation-plan.md` plus `04-dependency-diagram.py/.png` and `04-runtime-diagram.py/.png`. The IaC tool is set in session state decisions.iac_tool."
+    prompt: "Create a Bicep implementation plan based on the architecture in `agent-output/{project}/02-architecture-assessment.md`. Prerequisites: `04-governance-constraints.md/.json` from Step 3.5. Output: `04-implementation-plan.md` plus `04-dependency-diagram.py/.png` and `04-runtime-diagram.py/.png`. The IaC tool is Bicep — set decisions.iac_tool accordingly."
     send: true
   - label: "Step 5: Generate Bicep"
     agent: 06b-Bicep CodeGen
     prompt: "Implement the Bicep templates according to the plan in `agent-output/{project}/04-implementation-plan.md`. Save to `infra/bicep/{project}/`. Proceed directly to completion - Deploy agent will validate."
     send: true
-  - label: "Step 6: Deploy"
+  - label: "Step 6: Deploy (Bicep)"
     agent: 07b-Bicep Deploy
     prompt: "Deploy the Bicep templates in `infra/bicep/{project}/` to Azure after preflight validation. Input: `04-implementation-plan.md` for deployment strategy (phased or single). Output: `06-deployment-summary.md`."
+    send: false
+  - label: "Step 4: IaC Plan (Terraform)"
+    agent: 05-IaC Planner
+    prompt: "Create a detailed Terraform implementation plan based on the architecture in `agent-output/{project}/02-architecture-assessment.md`. Prerequisites: `04-governance-constraints.md/.json` from Step 3.5. Output: `04-implementation-plan.md` plus `04-dependency-diagram.py/.png` and `04-runtime-diagram.py/.png`. The IaC tool is Terraform — set decisions.iac_tool accordingly."
+    send: true
+  - label: "Step 5: Generate Terraform"
+    agent: 06t-Terraform CodeGen
+    prompt: "Implement the Terraform configuration according to the plan in `agent-output/{project}/04-implementation-plan.md`. Save to `infra/terraform/{project}/`. Proceed directly to completion - Deploy agent will validate."
+    send: true
+  - label: "Step 6: Deploy (Terraform)"
+    agent: 07t-Terraform Deploy
+    prompt: "Deploy the Terraform configuration in `infra/terraform/{project}/` to Azure after preflight validation. Input: `04-implementation-plan.md` for deployment strategy. Output: `06-deployment-summary.md`."
     send: false
   - label: "Step 7: As-Built Documentation"
     agent: 08-As-Built
@@ -73,18 +85,6 @@ handoffs:
     agent: 10-Challenger
     prompt: "Run an adversarial review on the artifact specified by the current gate (Requirements, Architecture, Governance, Plan, or Code). Input: artifact path passed by the orchestrator (e.g. agent-output/{project}/01-requirements.md). Output: agent-output/{project}/challenge-findings-{type}.json plus an inline summary. Re-enter the orchestrator after the user reviews the findings."
     send: true
-  - label: "Step 4: IaC Plan (Terraform)"
-    agent: 05-IaC Planner
-    prompt: "Create a detailed Terraform implementation plan based on the architecture in `agent-output/{project}/02-architecture-assessment.md`. Prerequisites: `04-governance-constraints.md/.json` from Step 3.5. Output: `04-implementation-plan.md` plus `04-dependency-diagram.py/.png` and `04-runtime-diagram.py/.png`. The IaC tool is Terraform — set decisions.iac_tool accordingly."
-    send: true
-  - label: "Step 5: Generate Terraform"
-    agent: 06t-Terraform CodeGen
-    prompt: "Implement the Terraform configuration according to the plan in `agent-output/{project}/04-implementation-plan.md`. Save to `infra/terraform/{project}/`. Proceed directly to completion - Deploy agent will validate."
-    send: true
-  - label: "Step 6: Deploy (Terraform)"
-    agent: 07t-Terraform Deploy
-    prompt: "Deploy the Terraform configuration in `infra/terraform/{project}/` to Azure after preflight validation. Input: `04-implementation-plan.md` for deployment strategy. Output: `06-deployment-summary.md`."
-    send: false
 ---
 
 # Orchestrator Agent
@@ -251,8 +251,6 @@ after Step 1 completes.
 
 After confirming the project name, read these four skill files in a
 **single parallel `read_file` batch** (one tool call, four files).
-Never re-read a file already in your conversation history
-(see [Context Hygiene](../instructions/agent-authoring.instructions.md#context-hygiene-token-efficiency)):
 
 1. `.github/skills/golden-principles/SKILL.md` — quality principles
 2. `.github/skills/azure-defaults/SKILL.md` — regions, tags
@@ -286,40 +284,20 @@ Instead of hardcoded step logic, read `workflow-graph.json` from the workflow-en
 
 ## Review Protocol: Single-Pass Default
 
-All steps default to **1-pass comprehensive adversarial review**. Multi-pass rotating
-lens reviews are **opt-in**, recommended only for complex projects.
+All steps default to **1-pass comprehensive adversarial review**. Multi-pass
+rotating-lens reviews are **opt-in**, recommended only for complex projects.
 
 ### Computing `decisions.complexity`
 
 At **Gate-1** (after Requirements approval) and refreshed at **Gate-2_5** (after
 Governance), derive `decisions.complexity` using the canonical formula in
 `.github/skills/workflow-engine/templates/workflow-graph.json`
-(`metadata.complexity_routing`). Do not re-invent the formula — read it from the
-graph.
-
-```text
-score = (resource_count / 3)
-      + (policy_violations / 2)
-      + (iac_tool == "terraform" ? 0.5 : 0)
-
-score <= 1.5  -> complexity = "simple"   (1 review pass)
-score <= 3.0  -> complexity = "standard" (2 review passes)
-score  > 3.0  -> complexity = "complex"  (3 review passes)
-```
-
-Inputs:
-
-| Input               | Source                                                              |
-| ------------------- | ------------------------------------------------------------------- |
-| `resource_count`    | Count declared in `02-architecture-assessment.md`                   |
-| `policy_violations` | Count of `deny`-effect findings in `04-governance-constraints.json` |
-| `iac_tool`          | `decisions.iac_tool` (bicep or terraform)                           |
-
-Persist the result at `decisions.complexity` via
+(`metadata.complexity_routing`). Read the formula from the graph; do not
+re-invent it. Inputs: `resource_count` (from `02-architecture-assessment.md`),
+`policy_violations` (deny-effect findings in `04-governance-constraints.json`,
+or `0` pre-Gate-2_5), `iac_tool` (`decisions.iac_tool`). Persist via
 `apex-recall decide <project> --key complexity --value <result> --json` so every
-agent reads the same value instead of re-deriving. If `04-governance-constraints.json`
-is not yet generated (pre-Gate-2_5), set `policy_violations = 0` and refresh the
-score after governance approval.
+agent reads the same value instead of re-deriving.
 
 ### Computing `decisions.review_depth` (project-scoped opt-in)
 
@@ -331,10 +309,10 @@ project init), then never re-prompt. Allowed values:
 | `default` | Single-pass `comprehensive` reviews at Steps 1, 2, 4; `governance-reconciliation` at Step 3.5    |
 | `deep`    | All challenger reviews use the opt-in rotating-lens cascade per `adversarial-review-protocol.md` |
 
-**01-Orchestrator is the ONLY writer.** 02-Requirements (and every other
-parent agent) reads `decisions.review_depth` via
-`apex-recall show <project> --json` at every invocation but never writes
-it. Default value when absent: `"default"`.
+**01-Orchestrator is the ONLY writer.** Every other parent agent reads
+`decisions.review_depth` via `apex-recall show <project> --json` but never
+writes it. Default when absent: `"default"`. When set to `"deep"`, parent
+agents enter the rotating-lens path automatically — do NOT re-ask at gates.
 
 Capture via `askQuestions`:
 
@@ -350,10 +328,6 @@ Persist:
 apex-recall decide <project> --key review_depth --value default|deep \
   --rationale "User selection at project boot" --json
 ```
-
-When `decisions.review_depth == "deep"`, parent agents automatically
-enter the opt-in rotating-lens path. The Orchestrator does NOT re-ask at
-each gate.
 
 ### Gate behaviour
 
@@ -399,20 +373,14 @@ Lint: `npm run validate:review-ceiling`.
 
 | DO                                                                   | DON'T                                                             |
 | -------------------------------------------------------------------- | ----------------------------------------------------------------- |
-| Complete project setup in ONE turn (askQuestions → create → handoff) | Split project setup across multiple turns                         |
-| Use `askQuestions` to confirm project name (not inline messages)     | End turn after `askQuestions` — continue immediately in same turn |
-| Check for existing artifacts before starting fresh                   | Overwrite prior progress without checking for existing artifacts  |
+| Complete project setup in ONE turn (askQuestions → create → handoff) | End turn after `askQuestions` — continue immediately in same turn |
 | Delegate every step via a **handoff button**                         | Skip approval gates — EVER                                        |
 | Present the Challenger as a handoff button at gates that need review | Wrap step agents or the challenger in `#runSubagent`              |
-| Recommend session break at Gates 2 and 3                             | Ask about IaC tool (Bicep/Terraform) — Requirements handles this  |
-| Track progress via artifact files in `agent-output/{project}/`       | Deploy without validation (Deploy agent handles preflight)        |
-| Summarize subagent results concisely                                 | Modify files directly — delegate to appropriate agent             |
-| Create `agent-output/{project}/` + init session via `apex-recall`    | Include raw subagent dumps                                        |
-| Ensure `README.md` exists (Requirements agent creates it)            | Combine multiple steps without approval between them              |
-| Write `00-handoff.md` at EVERY gate before presenting                | Skip `00-handoff.md` or session state updates                     |
-| Update session state via `apex-recall` at EVERY gate                 | Continue past a gate in the same chat — every gate ends with `/clear` |
+| Track progress via artifact files in `agent-output/{project}/`       | Modify files directly — delegate to appropriate agent             |
+| Write `00-handoff.md` + `apex-recall checkpoint` at EVERY gate       | Skip `00-handoff.md` or session-state updates                     |
 | End every accepted-gate message with the verbatim `/clear` line      | Paraphrase the resume line — validator greps it exactly           |
-| Emit `/clear` between challenger passes when more than 1 pass runs   | Chain multi-pass challenger reviews in one chat — span counter blows the ≤ 50 ceiling |
+| Emit `/clear` between challenger passes when more than 1 pass runs   | Continue past a gate in the same chat                             |
+| Recommend session break at Gates 2 and 3                             | Combine multiple steps without approval between them              |
 
 ### Checkpoint Fallback (Safety Net)
 
@@ -591,14 +559,19 @@ contract:
 4. End the message with this line, **verbatim**, on its own final line:
 
    ```text
-   Run `/clear` then reply `@01-Orchestrator resume <project>` to continue Step N+1.
+   Run `/clear`, then switch the chat agent picker to `01-Orchestrator` and send `resume <project>` to continue Step N+1.
    ```
+
+   > VS Code custom agents activate via the agent picker, not via
+   > `@name` chat-participant syntax. See
+   > <https://code.visualstudio.com/docs/copilot/customization/custom-agents>.
 
 5. **Stop.** Do not continue Step N+1 in the same chat — the contract is non-negotiable.
 
 ### Resume path
 
-New chat with `@01-Orchestrator resume <project>`: first tool call is
+In the new chat the user picks `01-Orchestrator` from the agent picker
+and sends `resume <project>`: the first tool call is
 `apex-recall show <project> --json`. Read `00-handoff.md` only if a
 gate-specific artifact path is needed; do not re-read completed-step
 artifacts unless the user asks. Lint:
@@ -606,31 +579,24 @@ artifacts unless the user asks. Lint:
 
 ### Mid-step compaction (multi-pass challenger reviews)
 
-When a challenger review requires more than one pass (`review_depth =
-"deep"`, or revision passes triggered by accepted findings),
-**every pass after Pass 1** must be preceded by a `/clear` handoff —
-not just the final gate. Without this, the inter-`/clear` chat-span
-counter climbs past the smoke-verify ceiling (≤ 50) and Step-2 input
-tokens blow past 110 k.
+When a challenger review runs more than one pass (`review_depth = "deep"`,
+or revision passes triggered by accepted findings), **every pass after
+Pass 1** must be preceded by its own `/clear` handoff — not just the
+final gate. The full procedure (per-pass checkpoint, in-chat fix application,
+verbatim resume line, smoke-verify chat-span ceiling) lives in
+[`compression-templates.md#mid-step-clear-handoff-multi-pass-challenger-reviews`](../skills/context-management/references/compression-templates.md#mid-step-clear-handoff-multi-pass-challenger-reviews).
 
-Procedure between Pass N and Pass N+1:
+Between Pass N and Pass N+1:
 
-1. Persist Pass-N findings + decisions:
+```bash
+apex-recall checkpoint <project> <step> after_challenger_pass_<N> --json
+```
 
-   ```bash
-   apex-recall checkpoint <project> <step> after_challenger_pass_<N> --json
-   ```
+then end the message with this line, **verbatim**, on its own final line:
 
-2. Apply accepted fixes to the artifact (still in current chat — fixes
-   are small targeted edits).
-3. End the message with this line, **verbatim**, on its own final line:
+```text
+Run `/clear`, then switch the chat agent picker to `01-Orchestrator` and send `resume <project>` to continue challenger Pass <N+1>.
+```
 
-   ```text
-   Run `/clear` then reply `@01-Orchestrator resume <project>` to continue challenger Pass <N+1>.
-   ```
-
-4. **Stop.** The next pass runs in a fresh chat, scoped to the
-   revised artifact only.
-
-Single-pass `comprehensive` reviews (the default) do not trigger this
-rule — they go straight to the gate-boundary `/clear`.
+Single-pass `comprehensive` reviews (the default) skip this rule and go
+straight to the gate-boundary `/clear`.
