@@ -11,8 +11,8 @@ on:
         description: "Project to benchmark"
         required: false
         default: "contoso-service-hub-run-1"
-  schedule:
-    - cron: "0 9 * * 1" # Weekly on Monday at 09:00 UTC (staggered: see .github/workflows/README.md#weekly-cron-schedule)
+#   schedule:
+#    - cron: "0 9 * * 1" # Weekly on Monday at 09:00 UTC (staggered: see .github/workflows/README.md#weekly-cron-schedule)
 
 permissions:
   contents: read
