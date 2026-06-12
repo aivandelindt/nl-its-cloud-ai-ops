@@ -12,9 +12,9 @@
 name: Weekly Maintenance
 
 on:
-  schedule:
+# schedule:
     # Run weekly on Mondays at 06:00 UTC.
-    - cron: "0 6 * * 1"
+#    - cron: "0 6 * * 1"
   workflow_dispatch:
     inputs:
       create_issue:
