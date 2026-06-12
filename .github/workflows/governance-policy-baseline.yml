@@ -1,11 +1,11 @@
 name: Governance Policy Baseline
 
 on:
-  schedule:
+# schedule:
     # Weekly on Monday at 05:00 UTC. Moved from daily-04:00 (May 2026) because
     # every drift PR now requires human review (auto-merge dropped, see
     # workflows/README.md). Weekly is enough to keep the baseline fresh.
-    - cron: "0 5 * * 1"
+#    - cron: "0 5 * * 1"
   workflow_dispatch:
     inputs:
       force_update:
